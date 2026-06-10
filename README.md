@@ -206,3 +206,6 @@ Layout decisions would have to move from macro-expansion time to type-specializa
 3. User `new(v1, …, vN)` would have to dispatch into the generated packer rather than land in the `struct` block directly.
 
 Costs: introspection (`fieldnames`, REPL printing, stack traces) shows byte tuples unless every helper is reimplemented, mutation gets harder, and the macro grows substantially.
+
+## See also
+[FieldFlags.jl](https://seelengrab.github.io/FieldFlags.jl/stable/) uses a similar approach, but focusing more on logical bits (fields) than on integers.
