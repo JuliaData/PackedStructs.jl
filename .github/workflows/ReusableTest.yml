@@ -50,17 +50,21 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
         if: ${{ inputs.version != 'lts' && inputs.version != 'pre' }}
       # Julia LTS path: `[sources]` is ignored, so dev the path/URL deps into
-      # a temp env and test by name. JET resolves from the registry; note that
-      # the JET testset in `test/runtests.jl` is gated to Julia >= 1.12, so on
-      # lts the JET version does not matter beyond resolvability.
+      # a temp env and test by name. EmulatedBitIntegers must be added before
+      # developing PackedStructs: developing PackedStructs triggers a resolve of
+      # its `EmulatedBitIntegers = "0.4"` requirement, and on 1.10 the `[sources]`
+      # URL pin is ignored, so the source has to be present already. JET resolves
+      # from the registry; note that the JET testset in `test/runtests.jl` is
+      # gated to Julia >= 1.12, so on lts the JET version does not matter beyond
+      # resolvability.
       - name: Run tests (Julia lts, no [sources])
         if: ${{ inputs.version == 'lts' }}
         run: |
           julia --color=yes -e '
             using Pkg
             Pkg.activate(; temp=true)
-            Pkg.develop(PackageSpec(path=pwd()))
             Pkg.add(PackageSpec(url="https://github.com/PatrickHaecker/EmulatedBitIntegers.jl", rev="main"))
+            Pkg.develop(PackageSpec(path=pwd()))
             Pkg.test("PackedStructs"; coverage=true,
                      julia_args=["--check-bounds=yes", "--depwarn=yes"])'
       # Julia 1.13 pre-release: registered JET does not yet support 1.13, so dev
