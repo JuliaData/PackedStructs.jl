@@ -1,5 +1,7 @@
 # PackedStructs
 
+[![Test workflow status](https://github.com/PatrickHaecker/PackedStructs.jl/actions/workflows/Test.yml/badge.svg?branch=main)](https://github.com/PatrickHaecker/PackedStructs.jl/actions/workflows/Test.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/PatrickHaecker/PackedStructs.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/PatrickHaecker/PackedStructs.jl)
 [![BestieTemplate](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/JuliaBesties/BestieTemplate.jl/main/docs/src/assets/badge.json)](https://github.com/JuliaBesties/BestieTemplate.jl)
 
 *Pack fields in structs to reduce padding.*

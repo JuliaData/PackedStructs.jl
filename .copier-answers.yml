@@ -14,7 +14,7 @@ AddLychee: false
 AddMacToCI: false
 AddPrecommit: false
 AddTagBotCI: true
-AddTestCI: false
+AddTestCI: true
 AddWinToCI: false
 Authors: Patrick Häcker <patrick.haecker@de.bosch.com>
 CheckExplicitImports: false
@@ -22,6 +22,7 @@ ConfigIndentation: 2
 GitHubActionVersionAutoUpdate: dependabot
 JuliaCompatAutoUpdate: dependabot
 JuliaIndentation: 4
+JuliaMinCIVersion: lts
 JuliaMinVersion: '1.10'
 License: MIT
 LicenseCopyrightHolders: Patrick Häcker
