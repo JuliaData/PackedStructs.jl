@@ -1,7 +1,7 @@
 module PackedStructs
 
-using EmulatedBitIntegers
-using ExproniconLite
+using EmulatedBitIntegers: EmulatedBitIntegers, bits, zext, storagetypeof
+using ExproniconLite: JLStruct, JLField, JLFunction, codegen_ast
 using PrecompileTools: @compile_workload
 
 export @packed
