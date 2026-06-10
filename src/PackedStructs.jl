@@ -2,6 +2,7 @@ module PackedStructs
 
 using EmulatedBitIntegers
 using ExproniconLite
+using PrecompileTools: @compile_workload
 
 export @packed
 VERSION >= v"1.11.0-DEV.469" && "public pack" |> Meta.parse |> eval
@@ -59,6 +60,57 @@ include("packed_struct.jl")
 
 macro packed(ex)
     packed(ex, __module__, __source__)
+end
+
+# The macro pipeline (`packed`, `group`, `create_packed_fields!`, `create_packed_struct!`, and the per-method builders) is inference-heavy and runs in the *user's* module at expansion time, so without this a downstream session pays multiple seconds compiling it on the first `@packed`. Expanding a few representative structs here caches that machinery into the precompile image. The generated per-type methods (the user's `Pack<B>{…}` constructor, `getproperty`, …) can't be precompiled in advance since they depend on user types, but the code that *builds* them can.
+@compile_workload begin
+    precompile(Tuple{typeof(packed), Expr, Module, LineNumberNode})
+
+    @eval module _PrecompileWorkload
+        using EmulatedBitIntegers
+        using PackedStructs
+
+        @emulate Int3 Int4 Int5
+
+        # Immutable grouped struct: grouping, group constructor, `getindex`,
+        # `getproperty`, `show`.
+        @packed struct _Imm
+            a::Int4
+            b::Int4
+        end
+        let x = _Imm(1, 2)
+            x.a, x.b
+            repr(x)
+        end
+
+        # Mutable grouped struct: the grouped `setproperty!` branch.
+        @packed mutable struct _Mut
+            a::Int4
+            b::Int4
+        end
+        let x = _Mut(0, 0)
+            x.a = 1
+            x.b = 2
+        end
+
+        # Inner constructor with `new(...)`: the `rewrite_new` path.
+        @packed struct _Inner
+            hi::Int5
+            lo::Int3
+            _Inner(a, b) = new(a, b)
+        end
+        _Inner(1, 1)
+
+        # Nested isbits struct field: recursive unpack via `Expr(:new)`.
+        struct _Wrap
+            v::Int4
+        end
+        @packed struct _Nested
+            w::_Wrap
+            t::Int4
+        end
+        _Nested(_Wrap(Int4(1)), Int4(2)).w
+    end
 end
 
 end
