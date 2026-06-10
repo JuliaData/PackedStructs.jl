@@ -30,9 +30,9 @@ jobs:
           - x64
         allow_failure: [false]
         include:
-          # Latest Julia pre-release (currently 1.13 rc): uses the v0.11.3 JET
-          # pin from test/Project.toml's `[sources]` (current JET that supports
-          # 1.13). Allowed to fail.
+          # Latest Julia pre-release (currently 1.13 rc): uses the JET fork pin
+          # from test/Project.toml's `[sources]` (`julia-1.13-compat` branch,
+          # the only JET that supports 1.13). Allowed to fail.
           - version: "pre"
             os: ubuntu-latest
             arch: x64

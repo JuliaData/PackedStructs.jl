@@ -61,13 +61,14 @@ jobs:
             Pkg.test("PackedStructs"; coverage=true,
                      julia_args=["--check-bounds=yes", "--depwarn=yes"])'
       # Julia 1.12: `[sources]` is honored, but `test/Project.toml` pins JET to
-      # the v0.11.3 fork for the 1.13 path. Drop just that line so the
-      # registered JET resolves; the EmulatedBitIntegers source pin is kept.
+      # the `julia-1.13-compat` fork branch for the 1.13 path. Drop just that
+      # line so the registered JET resolves; the EmulatedBitIntegers source pin
+      # is kept.
       - name: Drop JET [sources] pin (Julia 1.12)
         if: ${{ inputs.version == '1.12' }}
         run: sed -i '/^JET = /d' test/Project.toml
       # Julia 1.12 and 1.13: standard runtest. 1.13 keeps test/Project.toml's
-      # JET v0.11.3 pin from `[sources]`; 1.12 uses the registered JET after
+      # JET fork pin from `[sources]`; 1.12 uses the registered JET after
       # the sed step above.
       - uses: julia-actions/julia-runtest@v1
         if: ${{ inputs.version != 'lts' }}
