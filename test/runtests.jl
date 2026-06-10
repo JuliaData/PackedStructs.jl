@@ -93,13 +93,6 @@ end
 end
 
 @emulate Int4
-@testset "not implemented yet" begin
-    @packed struct SetIndex
-        a::Int4
-        b::Int4
-    end
-    @test_throws ErrorException Pack8{Tuple{Int4, Int4}}(Int4(2), Int4(3))[1] = Int4(4)
-end
 
 using BitIntegers
 @define_integers 24
@@ -233,6 +226,24 @@ end
     @test w.a === 5 |> UInt33 && w.b === 7 |> UInt30
     @test WideTwo |> sizeof === 8
     @test fieldtypes(WideTwo) == (Pack64{Tuple{UInt33, UInt30}},)
+end
+
+@testset "padding bits are zero" begin
+    # Unsigned padded group: ThreeTens packs 3×UInt10 = 30 logical bits into Pack32 with 2 padding bits.
+    @test reinterpret(UInt32, getfield(ThreeTens(0, 0, 0), 1)) === 0x00000000
+    @test reinterpret(UInt32, getfield(ThreeTens(2^10-1, 2^10-1, 2^10-1), 1)) === 0x3fffffff
+
+    # Mixed signed/unsigned padded group: Int9 + UInt5 = 14 logical bits in Pack16 with 2 padding bits. Negative values exercise that sign-extension on EmulatedBitIntegers does not leak into padding.
+    @packed struct PadSigned
+        a::Int9
+        b::UInt5
+    end
+    @test reinterpret(UInt16, getfield(PadSigned(0, 0), 1)) === 0x0000
+    @test reinterpret(UInt16, getfield(PadSigned(Int9(-1), UInt5(31)), 1)) === 0x3fff
+
+    # Hash/== parity rests on the zero-padding invariant: two independent equal-valued constructions must compare and hash identically.
+    @test ThreeTens(2^10-1, 2^10-1, 2^10-1) == ThreeTens(2^10-1, 2^10-1, 2^10-1)
+    @test hash(PadSigned(Int9(-1), UInt5(31))) == hash(PadSigned(Int9(-1), UInt5(31)))
 end
 
 @emulate UInt22

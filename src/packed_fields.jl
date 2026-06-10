@@ -128,21 +128,13 @@ function unpack_field_expr(type::Type, pf::APackedFields, bitoffset)
     end
 end
 
-function define_setindex(pf::APackedFields)
-    T = packtype(pf)
-    args = [:(x::$T), :v, :(i::Integer)]
-    body = :("`setindex!` not implemented, yet, for `PackedFields`" |> error) |> inline
-    return JLFunction(name=:(Base.setindex!); args, body)
-end
-
 function create_packed_fields!(exprs, pfs::AbstractVector{<:APackedFields}, source::LineNumberNode)
     for pf in unique(pf -> pf.fieldtypes, Iterators.filter(isgroup, pfs))
         param = Tuple{pf.fieldtypes...}
         T = packstorage(pf.bits, param)
         # Guard at evaluation time: a second `@packed` in the same module can't see methods another expansion only pushed into `exprs`, so `hasmethod` here would not work. Wrap the defs so they only run if no prior block already defined them.
         defs = (codegen_ast(linewrap!(define_constructor(pf), source)),
-                codegen_ast(linewrap!(define_getindex(pf), source)),
-                codegen_ast(linewrap!(define_setindex(pf), source)))
+                codegen_ast(linewrap!(define_getindex(pf), source)))
         push!(exprs, :(hasmethod($T, $param) || begin $(defs...) end))
     end
 end
