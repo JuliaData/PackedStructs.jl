@@ -24,7 +24,7 @@ function rewrite_new_splat(values, pfs, n_public_fields)
 end
 
 # Recursively rewrite every `new(v1, ..., vN)` call in `ex` into `new(packed_args...)` matching the rewritten field layout. The user writes `new` with one value per user-visible field, exactly as they would for a non-packed struct; we group the values per `pf` and wrap each group through `call_constructor`. Splatted forms like `new(x...)` are materialized through `tuple(...)` so the arity check happens at runtime.
-rewrite_new(ex, pfs, n_public_fields) = ex
+rewrite_new(ex, _, _) = ex
 function rewrite_new(ex::Expr, pfs, n_public_fields)
     if ex.head === :call && !isempty(ex.args) && ex.args[1] === :new
         values = [rewrite_new(a, pfs, n_public_fields) for a in ex.args[2:end]]
@@ -95,6 +95,7 @@ end
 # Branch body for one public field in `setproperty!`: const fields error with the field name; lone fields fall through to `setfield!` (compiler folds this to the default after constant prop on `s`); grouped fields rebuild the `Pack<B>` slot with one entry replaced — repeated `getfield(x, $g)[k]` decodes the same loaded packed primitive, so CSE collapses the cost to a few bitmask ops.
 function set_branch(g::Int, pf::APackedFields, j::Int, f::Field)
     qn = f.publicname |> QuoteNode
+    # Mimic Julia's own const-write message verbatim so user-level error handling behaves identically across plain and `@packed` mutable structs.
     f.isconst && return :(s === $qn && error("setfield!: const field .", s, " of type ", typeof(x), " cannot be changed"))
     isgroup(pf) || return :(s === $qn && return setfield!(x, s, convert($(f.type), v)))
     pack_args = (k == j ? :(convert($(pf.fields[k].type), v)) : :(getfield(x, $g)[$k]) for k in 1:length(pf))

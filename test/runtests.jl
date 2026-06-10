@@ -195,7 +195,6 @@ end
     @test fieldtypes(FourInt2Packed) == (Pack8{Tuple{PackedTwoInt2, PackedTwoInt2}},)
 end
 
-@emulate UInt3
 @testset "two packed runs" begin
     @packed struct TwoPackedFields
         a::UInt3

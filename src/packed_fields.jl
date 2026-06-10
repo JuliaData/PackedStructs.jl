@@ -40,7 +40,7 @@ PackedFields(fields::Vector{JLField}, bits::Integer) = PackedFields{fields |> le
 isgroup(x::PackedFields{L}) where L = L > 1
 Base.length(x::PackedFields{L}) where L = L
 
-# Symbol of the parametric primitive type for a given total bit width, e.g. `Pack8`.
+# Symbol of the parametric primitive type for a given total bit width, e.g. `Pack8`. Construction and `getindex` methods exist only for tuple parameterizations that some `@packed` struct has produced; `Pack<B>` is an internal storage primitive, not a standalone container.
 packname(nbits::Integer) = Symbol("Pack", nbits)
 # Symbol of the parametric abstract supertype for a given total bit width, e.g. `APack8`. Declared alongside the primitive type so users can specialize behavior on `APack<B>{Tuple{…}}`.
 packabsname(nbits::Integer) = Symbol("A", packname(nbits))
@@ -72,7 +72,7 @@ packstorage(nbits::Integer, param::Type{<:Tuple}) = packstorage(nbits){param}
 function define_constructor(pf::APackedFields)
     T = packtype(pf)
     args = [:($(Symbol("_", i))::$Ti) for (i, Ti) in enumerate(pf.fieldtypes)]
-    # We need the preceding bits to be all 0 for the following to work. This is not the case for negative numbers of EmulatedBitIntegers and not guaranteed for arbitrary types.
+    # Invariant on the result: every bit above `sum(bits, fields)` is zero. Two equal-valued constructions therefore produce bit-identical `Pack<B>` payloads, which is what gives `==`/`hash`/`deepcopy` parity with plain structs. Rests on the `pack` contract that `pack(T, x)` places `x`'s bits in the low `bits(typeof(x))` bits of `T` with zeros above; the default methods (`zext` for integers, recursive struct fallback) satisfy this. A custom `pack` override that leaks bits above its field's width silently breaks the invariant.
     shifts = (:(PackedStructs.pack($(pf.supporttype), $(f.name)) << $(f.bitoffset)) for f in pf.fields)
     body = :(reinterpret($T, |($(shifts...)))) |> inline
     return JLFunction(name=T; args, body)
@@ -92,7 +92,7 @@ end
 # Build the right-hand side of a `getindex` case: extract the field of type `type` at bit `bitoffset` from the packed group `x` described by `pf`. The hardcoded `:x` must match the argument name in `define_getindex`. Struct-typed fields recurse, bottoming out at primitive types.
 function unpack_field_expr(type::Type, pf::APackedFields, bitoffset)
     return if isprimitivetype(type)
-        # Use a signed support type if the field is signed to get the correct right shift for negative numbers. We can't always use a signed support type, as otherwise we would incorrectly shift for large unsigned numbers.
+        # Use the same signedness for the support type as for the field to always get the correct right shift, e.g. for negative numbers.
         supporttype = type <: Signed ? pf.signedsupporttype : pf.supporttype
         storagetype = type |> storagetypeof
         lshift = pf.bits - (bitoffset + bits(type))
