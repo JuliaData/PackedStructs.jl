@@ -165,6 +165,36 @@ As in plain Julia, providing any inner constructor suppresses both the default i
 
 `propertynames`, `getproperty`, `setproperty!`, `==`, `isequal`, `hash`, `show`, `print`, `repr`, `deepcopy`, and `Dict`/`Set` use all behave as they would for a plain `struct`. The lower-level introspection APIs (`fieldnames`, `fieldtype`, `nfields`, `dump`) report the underlying storage slots (e.g. `_packed_fields_1::Pack8{…}`) rather than the user-visible names, since they are name-based and `getfield` is a builtin that can't be intercepted.
 
+## Extending `pack`
+
+`PackedStructs.pack(T, x)` produces the integer bit pattern stored for `x` in a packed group. The default methods cover `Integer`s and `isbits` (non-tuple) structs. Adding a method lets you pack types that don't fall into either bucket — most usefully **non-`Integer` primitive types whose bits are their value**, such as floats or `Char`.
+
+The unpack path is not user-extensible: a primitive field is read back via `reinterpret(FieldType, …)` and a struct field is read back field-by-field with `Expr(:new, …)`. A custom `pack` must therefore produce exactly the bit pattern this fixed reverse operation expects, and must place those bits in the low `bits(typeof(x))` bits of the returned `T` with zeros above (the group constructor `|`s shifted results together).
+
+Worked example for `Float32`:
+
+```julia
+using PackedStructs, EmulatedBitIntegers
+
+# Logical width and underlying storage primitive for the read path.
+EmulatedBitIntegers.bits(::Type{Float32}) = 32
+EmulatedBitIntegers.storagetypeof(::Type{Float32}) = UInt32
+
+# Float32 isn't <: Integer, so the default `pack` doesn't apply. Route through
+# the same-width unsigned; `pack(T, ::UInt32)` then zero-extends into T.
+PackedStructs.pack(T::Type{<:Integer}, x::Float32) = pack(T, reinterpret(UInt32, x))
+
+@packed struct Vec2f
+    x::Float32
+    y::Float32
+end
+# sizeof(Vec2f) == 8, stored as Pack64{Tuple{Float32, Float32}}.
+```
+
+The same pattern works for `Float16` (pair into a `Pack32`), `Float64` (lone in a `Pack64`), or `Char` (4-byte primitive).
+
+For a *struct* type you want to lay out at a non-default bit width, register `bits` on the inner field type — don't override `pack` to reorder or compress fields, because the reads won't follow your encoding.
+
 ## Limitations
 
 Parametric `@packed struct Foo{T}` is rejected. Packing decisions (which fields share a `Pack<B>`, what `B` is, and the resulting `struct` field list) are made at macro-expansion time from each field's `bits`, but a type parameter has no concrete `bits` yet. This is also rarely worth the complication: a layout that packs well for one choice of `T` typically wastes bits or fails to group for another, so there is no single "good" packed layout to commit to.

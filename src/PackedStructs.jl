@@ -27,7 +27,15 @@ Fallback methods handle:
 - Single-field `isbits` struct: recurses into the field.
 - Multi-field `isbits` struct (other than `Tuple`/`NamedTuple`): concatenates fields by their logical [`bits`](@ref) widths, last field in the low bits.
 
-Other packages can add methods for their own types to control how they are laid out in packed storage.
+Add a method for a custom type to teach `@packed` how to lay it out. The contract:
+
+1. Return a `T` whose low `bits(typeof(x))` bits hold the value and whose higher bits are zero. The group constructor `|`s shifted results together, so a stray high bit corrupts the neighboring field.
+2. `EmulatedBitIntegers.bits(typeof(x))` and `EmulatedBitIntegers.storagetypeof(typeof(x))` must be defined for primitive types so the read path (`getindex` on the `Pack<B>` slot) can size and reinterpret the extracted bits.
+3. Reads are *not* user-extensible: a primitive type is read back via `reinterpret(T, …)` on its `storagetypeof`; a struct is read back field-by-field with `Expr(:new, T, …)`. A custom `pack` must produce a bit pattern matching that fixed reverse operation. Reordering, custom encoding, or padding semantics that diverge from field-by-field recursion are silently wrong on read.
+
+The safe scope is therefore primitive non-`Integer` types whose bits are their value (e.g. `Float16`/`Float32`/`Float64`, `Char`). For custom *struct* layouts, register `bits` on the inner field type instead of overriding `pack`.
+
+See the "Extending `pack`" section of the README for a worked `Float32` example.
 """
 pack(T::Type{<:Integer}, x::Integer) = zext(T, x)
 function pack(T::Type{<:Integer}, x)
