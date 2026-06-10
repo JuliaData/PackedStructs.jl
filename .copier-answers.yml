@@ -1,0 +1,38 @@
+# Changes here will be overwritten by Copier
+AddAllcontributors: false
+AddChangelog: false
+AddCitationCFF: false
+AddCodeOfConduct: false
+AddCopierCI: false
+AddDocs: false
+AddDocsCI: false
+AddFormatterAndLinterConfigFiles: true
+AddGitHubPRTemplate: false
+AddGitHubTemplates: false
+AddLintCI: false
+AddLychee: false
+AddMacToCI: false
+AddPrecommit: false
+AddTagBotCI: true
+AddTestCI: false
+AddWinToCI: false
+Authors: Patrick Häcker <patrick.haecker@de.bosch.com>
+CheckExplicitImports: false
+ConfigIndentation: 2
+GitHubActionVersionAutoUpdate: dependabot
+JuliaCompatAutoUpdate: dependabot
+JuliaIndentation: 4
+JuliaMinVersion: '1.10'
+License: MIT
+LicenseCopyrightHolders: Patrick Häcker
+MarkdownIndentation: 2
+PackageName: PackedStructs
+PackageOwner: PatrickHaecker
+PackageUUID: 3f4c4bcc-b4a0-426b-9836-06ea373f3441
+RunJuliaNightlyOnCI: false
+StrategyConfirmIncluded: true
+StrategyLevel: 1
+StrategyReviewExcluded: false
+TestingStrategy: basic_auto_discover
+UseCirrusCI: false
+_src_path: /home/hp74lr/.julia/packages/BestieTemplate/6QVd6

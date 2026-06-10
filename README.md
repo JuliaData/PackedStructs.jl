@@ -1,5 +1,7 @@
 # PackedStructs
 
+[![BestieTemplate](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/JuliaBesties/BestieTemplate.jl/main/docs/src/assets/badge.json)](https://github.com/JuliaBesties/BestieTemplate.jl)
+
 *Pack fields in structs to reduce padding.*
 
 ## Introduction
@@ -7,12 +9,6 @@
 `PackedStructs.jl` provides the @packed macro to annotate structs. These structs will pack together types which do not have a native size, i.e. a power-of-two byte size. This is especially useful when using `BitIntegers.jl` or `EmulatedBitIntegers`. Accesses to these packed types take some additional CPU cycles in general. Therefore, speed is effectively traded for space. However, the space savings can lead to a better caching behavior. In some situations, packed structs can be both smaller and faster than regular structs.
 
 ## Usage
-
-To use the package, it needs to be `develop`ed in the package manager until it is registered in a registry.
-
-```
-pkg> develop path/to/PackedStructs
-```
 
 To create a packed struct, do, e.g.:
 
