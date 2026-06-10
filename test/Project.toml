@@ -1,0 +1,14 @@
+[deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+BitIntegers = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
+EmulatedBitIntegers = "344cc1fc-1294-4796-b5db-6b4bd1573fb6"
+ExproniconLite = "55351af7-c7e9-48d6-89ff-24e801d99491"
+InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+PackedStructs = "3f4c4bcc-b4a0-426b-9836-06ea373f3441"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[sources]
+EmulatedBitIntegers = {rev = "main", url = "https://github.com/PatrickHaecker/EmulatedBitIntegers.jl"}
+JET = {rev = "v0.11.3", url = "https://github.com/aviatesk/JET.jl"}
+PackedStructs = {path = ".."}
