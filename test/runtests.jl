@@ -286,6 +286,10 @@ function normalized_llvm(f, types)
     s = replace(s, r"\n\s*\n" => "\n")
     return strip(s)
 end
+# Flat, nested-plain, and nested-packed accessors compile to identical IR. That
+# equality holds only once codegen is optimal, which (as for the `performance
+# invariants` testset below) is from Julia 1.11 on.
+@static if VERSION >= v"1.11"
 @testset "nested-struct getproperty matches flat codegen" begin
     for (flat_acc, nested_acc) in (
         (x -> x.a, x -> x.p.a),
@@ -299,6 +303,7 @@ end
         @test flat == plain
         @test flat == packed
     end
+end
 end
 
 @testset "odd total byte size" begin
