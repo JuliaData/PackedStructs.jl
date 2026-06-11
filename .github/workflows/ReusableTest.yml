@@ -40,7 +40,7 @@ jobs:
           version: ${{ inputs.version }}
           arch: ${{ inputs.arch }}
       - name: Use Julia cache
-        uses: julia-actions/cache@v2
+        uses: julia-actions/cache@v3
       # `julia-buildpkg` instantiates the package. It is skipped on the two
       # versions that build in a temp env instead: `lts` (1.10 ignores `[sources]`,
       # so the `EmulatedBitIntegers` URL pin in the main `Project.toml` can't
