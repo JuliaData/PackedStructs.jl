@@ -279,6 +279,11 @@ function normalized_llvm(f, types)
     io = IOBuffer()
     code_llvm(io, f, types; debuginfo=:none, optimize=true)
     s = io |> take! |> String
+    # Under `--code-coverage`, every source line is instrumented with an
+    # `atomicrmw add` counter increment. A nested accessor spans more source lines
+    # than its flat equivalent, so it gets more such increments; dropping them lets
+    # the comparison reflect only the computed IR, with or without coverage.
+    s = replace(s, r"^.*atomicrmw add ptr inttoptr.*\n"m => "")
     s = replace(s, r"define [^{]*\{" => "define {")
     s = replace(s, r"%\d+" => "%v")
     s = replace(s, r"%\"x::[^\"]+\"" => "%x")
@@ -443,11 +448,15 @@ end
     end
 end
 
-# Capture LLVM IR of `f(::types...)` and return the lines containing actual operations: drop preamble (`define`/`declare`), labels, braces, comments, blank lines, and the trailing `ret` (which is bookkeeping, not an operation — when the caller inlines `f`, only the operation lines remain).
+# Capture LLVM IR of `f(::types...)` and return the lines containing actual operations: drop preamble (`define`/`declare`), labels, braces, comments, blank lines, the trailing `ret` (bookkeeping, not an operation — when the caller inlines `f`, only the operation lines remain), and `--code-coverage` counter increments (`atomicrmw add` into a fixed pointer) so the count is the same with or without coverage instrumentation.
 function llvm_ops(f, types)
     io = IOBuffer()
     InteractiveUtils.code_llvm(io, f, types; debuginfo=:none, raw=false)
-    filter(!contains(r"^\s*($|;|define|declare|\}|\{\s*$|.+:\s*$|ret\b)"), split(io |> take! |> String, "\n"))
+    lines = split(io |> take! |> String, "\n")
+    filter(lines) do l
+        !contains(l, r"^\s*($|;|define|declare|\}|\{\s*$|.+:\s*$|ret\b)") &&
+            !contains(l, "atomicrmw add ptr inttoptr")
+    end
 end
 
 # A `call` instruction targeting an LLVM intrinsic (`@llvm.ctpop`, `@llvm.memcpy`, …) is a single native instruction, not a runtime dispatch. Only flag calls into Julia runtime functions (`@j_*`, `@julia_*`, `@ijl_*`, `@jl_*`).
@@ -494,17 +503,12 @@ end
         ("construct immutable",       build_imm, Tuple{Int4, Int4, Int8}, 5),
     ]
 
-    # Exact counts only hold for clean codegen: Julia 1.11+, no coverage instrumentation, and `--check-bounds` at its default (0 = default, 1 = yes, 2 = no). The `runtime_calls == 0` invariant remains the important one and runs unconditionally.
-    counts_calibrated = VERSION >= v"1.11" &&
-                        Base.JLOptions().code_coverage == 0 &&
-                        Base.JLOptions().check_bounds == 0
-
     for (label, f, types, exact_ops) in cases
         ops = llvm_ops(f, types)
         # No dispatch into runtime helpers — every operation must lower to native instructions or LLVM intrinsics. Also rules out allocations, which would surface as `@jl_gc_*` calls.
         @test runtime_calls(ops) == 0
         # Exact op count — any drift (up or down) signals a codegen change worth a look.
-        counts_calibrated && @test length(ops) == exact_ops
+        VERSION >= v"1.11" && @test length(ops) == exact_ops
     end
 end
 end
