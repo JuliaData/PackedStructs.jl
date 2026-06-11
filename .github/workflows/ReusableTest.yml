@@ -41,23 +41,22 @@ jobs:
           arch: ${{ inputs.arch }}
       - name: Use Julia cache
         uses: julia-actions/cache@v3
-      # `julia-buildpkg` instantiates the package. It is skipped on the two
-      # versions that build in a temp env instead: `lts` (1.10 ignores `[sources]`,
-      # so the `EmulatedBitIntegers` URL pin in the main `Project.toml` can't
-      # resolve from the registry) and `pre` (1.13's workspace resolve would pull
-      # the test-only registered JET, which caps below 1.13; the fork is injected
-      # below).
+      # `julia-buildpkg` instantiates the package (and, via `[workspace]`, its test
+      # environment). It is skipped on the versions that build in a temp env instead:
+      # `lts` (1.10 ignores `[sources]`, so the EmulatedBitIntegers URL pin in the
+      # main `Project.toml` can't resolve from the registry) and `pre` (the workspace
+      # resolve would pull the test-only registered JET, which caps below 1.13; the
+      # fork is injected below).
       - uses: julia-actions/julia-buildpkg@v1
         if: ${{ inputs.version != 'lts' && inputs.version != 'pre' }}
-      # Julia LTS path: `[sources]` is ignored, so dev the path/URL deps into
-      # a temp env and test by name. EmulatedBitIntegers must be added before
-      # developing PackedStructs: developing PackedStructs triggers a resolve of
-      # its `EmulatedBitIntegers = "0.4"` requirement, and on 1.10 the `[sources]`
-      # URL pin is ignored, so the source has to be present already. JET resolves
-      # from the registry; note that the JET testset in `test/runtests.jl` is
-      # gated to Julia >= 1.12, so on lts the JET version does not matter beyond
-      # resolvability.
-      - name: Run tests (Julia lts, no [sources])
+      # On Julia 1.10, `[sources]` is ignored (honoring it is a 1.11+ feature), so
+      # dev the deps into a temp env and test by name. EmulatedBitIntegers must be
+      # added before developing PackedStructs: developing it triggers a resolve of
+      # the `EmulatedBitIntegers = "0.4"` requirement, which the ignored URL pin
+      # can't satisfy. JET resolves from the registry (the JET testset in
+      # `test/runtests.jl` is gated to Julia >= 1.12, so on lts its version only
+      # needs to resolve).
+      - name: Run tests (lts path)
         if: ${{ inputs.version == 'lts' }}
         run: |
           julia --color=yes -e '
@@ -67,12 +66,12 @@ jobs:
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.test("PackedStructs"; coverage=true,
                      julia_args=["--check-bounds=yes", "--depwarn=yes"])'
-      # Julia 1.13 pre-release: registered JET does not yet support 1.13, so dev
-      # the package plus the EmulatedBitIntegers URL dep into a temp env and add
-      # the JET fork's `julia-1.13-compat` branch there. Drop this step once a
-      # 1.13-compatible JET is released. Runs without coverage or
-      # `--check-bounds=yes` so the `performance invariants` testset measures
-      # clean codegen.
+      # Julia 1.13 pre-release: registered JET does not yet support 1.13, so dev the
+      # deps into a temp env and add the JET fork's `julia-1.13-compat` branch there.
+      # Drop this step once a 1.13-compatible JET is released. Runs without coverage
+      # or `--check-bounds=yes` so the `performance invariants` testset measures clean
+      # codegen: those flags perturb the exact LLVM op counts it asserts (calibrated
+      # on 1.11+).
       - name: Run tests (pre path with JET fork)
         if: ${{ inputs.version == 'pre' }}
         run: |
@@ -83,10 +82,12 @@ jobs:
             Pkg.add(PackageSpec(url="https://github.com/PatrickHaecker/EmulatedBitIntegers.jl", rev="main"))
             Pkg.add(PackageSpec(url="https://github.com/PatrickHaecker/JET.jl", rev="julia-1.13-compat"))
             Pkg.test("PackedStructs"; julia_args=["--depwarn=yes"])'
-      # Julia 1.12: `[sources]` is honored, so the EmulatedBitIntegers URL pin
-      # resolves and JET comes from the registry. Standard runtest.
+      # Standard path for the remaining versions: the package was instantiated by
+      # `julia-buildpkg` above (on 1.11+ `[sources]` is honored, so the
+      # EmulatedBitIntegers URL pin resolves), so run its tests directly. Gated to
+      # mirror that step.
       - uses: julia-actions/julia-runtest@v1
-        if: ${{ inputs.version == '1.12' }}
+        if: ${{ inputs.version != 'lts' && inputs.version != 'pre' }}
       - uses: julia-actions/julia-processcoverage@v1
         if: ${{ inputs.run_codecov }}
       - uses: codecov/codecov-action@v7
