@@ -494,12 +494,17 @@ end
         ("construct immutable",       build_imm, Tuple{Int4, Int4, Int8}, 5),
     ]
 
+    # Exact counts only hold for clean codegen: Julia 1.11+, no coverage instrumentation, and `--check-bounds` at its default (0 = default, 1 = yes, 2 = no). The `runtime_calls == 0` invariant remains the important one and runs unconditionally.
+    counts_calibrated = VERSION >= v"1.11" &&
+                        Base.JLOptions().code_coverage == 0 &&
+                        Base.JLOptions().check_bounds == 0
+
     for (label, f, types, exact_ops) in cases
         ops = llvm_ops(f, types)
         # No dispatch into runtime helpers — every operation must lower to native instructions or LLVM intrinsics. Also rules out allocations, which would surface as `@jl_gc_*` calls.
         @test runtime_calls(ops) == 0
         # Exact op count — any drift (up or down) signals a codegen change worth a look.
-        @test length(ops) == exact_ops
+        counts_calibrated && @test length(ops) == exact_ops
     end
 end
 end
