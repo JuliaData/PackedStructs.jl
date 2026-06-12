@@ -73,7 +73,7 @@ function define_constructor(pf::APackedFields)
     T = packtype(pf)
     args = [:($(Symbol("_", i))::$Ti) for (i, Ti) in enumerate(pf.fieldtypes)]
     # Invariant on the result: every bit above `sum(bits, fields)` is zero. Two equal-valued constructions therefore produce bit-identical `Pack<B>` payloads, which is what gives `==`/`hash`/`deepcopy` parity with plain structs. Rests on the `pack` contract that `pack(T, x)` places `x`'s bits in the low `bits(typeof(x))` bits of `T` with zeros above; the default methods (`zext` for integers, recursive struct fallback) satisfy this. A custom `pack` override that leaks bits above its field's width silently breaks the invariant.
-    shifts = (:(PackedStructs.pack($(pf.supporttype), $(f.name)) << $(f.bitoffset)) for f in pf.fields)
+    shifts = (:($PackedStructs.pack($(pf.supporttype), $(f.name)) << $(f.bitoffset)) for f in pf.fields)
     body = :(reinterpret($T, |($(shifts...)))) |> inline
     return JLFunction(name=T; args, body)
 end
