@@ -127,6 +127,26 @@ function define_show(pfs::Vector{<:APackedFields}, atype)
     JLFunction(name=:(Base.show); args, body=inline(body))
 end
 
+# `ConstructionBase.getproperties(x)` defaults to one entry per `fieldname`, which would show the private `_packed_fields_N` storage slots. We override it to return a NamedTuple keyed by `propertynames` in constructor-argument order. `ConstructionBase.setproperties` also has to be overridden: its default `setproperties_object` refuses to run when `propertynames` differs from `fieldnames` (it can't safely guess the right constructor call). The override rebuilds the struct through the outer constructor `@packed` defines, which is the same path direct construction and `setproperty!` use. `cb` is the loaded `ConstructionBase` module (spliced as a value so the method definitions resolve without the caller importing `ConstructionBase`).
+function define_constructionbase_methods(cb::Module, pfs::Vector{<:APackedFields}, atype, structname::Symbol, src::LineNumberNode)
+    # `Expr(:tuple, Expr(:parameters, kw...))` is the AST for the surface form `(; a=…, b=…)`, which evaluates to a `NamedTuple` for any number of `kw` entries — including zero, where it produces `NamedTuple()` rather than the empty `Tuple` that `Expr(:tuple)` alone would yield. This keeps the override valid for zero-public-field `@packed` structs without a special case.
+    nt = Expr(:tuple, Expr(:parameters, (Expr(:kw, f.publicname, :(x.$(f.publicname))) for f in publicfields(pfs))...))
+    getproperties = Expr(:., cb, QuoteNode(:getproperties))
+    setproperties = Expr(:., cb, QuoteNode(:setproperties))
+
+    f_getproperties = Expr(:function,
+                Expr(:call, getproperties, :(x::$atype)),
+                Expr(:block, src, Expr(:meta, :inline), nt))
+
+    # Splatting a NamedTuple iterates its values in declaration order, matching the outer constructor's argument order. An extra key in `patch` (i.e. not a public field) survives the `merge` and lands as a surplus positional argument, which the constructor rejects with a `MethodError` — same observable behavior as the ConstructionBase default for non-packed structs with an unknown patch key.
+    f_setproperties = Expr(:function,
+                Expr(:call, setproperties, :(x::$atype), :(patch::NamedTuple)),
+                Expr(:block, src, Expr(:meta, :inline),
+                     :($structname(merge($getproperties(x), patch)...))))
+
+    return Expr(:block, f_getproperties, f_setproperties)
+end
+
 # Prepend a `LineNumberNode` to the function's body so stack traces and `@which` point at the `@packed` call site rather than `none:?`. The outer block's line nodes don't transfer into nested function defs — the line node must sit inside the function body.
 linewrap!(jlf::JLFunction, src::LineNumberNode) = (jlf.body = Expr(:block, src, jlf.body); jlf)
 
@@ -181,6 +201,8 @@ function create_packed_struct!(exprs, s, pfs::Vector{<:APackedFields}, source::L
     push!(exprs, linewrap!(define_setproperty(pfs, atype, s.ismutable), source) |> codegen_ast)
     # Skip when no grouping happened: `show_default` already prints the user-written field names since `fieldnames` matches.
     any(isgroup, pfs) && push!(exprs, linewrap!(define_show(pfs, atype), source) |> codegen_ast)
+    hasmethod(constructionbase_module, Tuple{}) &&
+        push!(exprs, define_constructionbase_methods(constructionbase_module(), pfs, atype, s.name, source))
 end
 
 function parse_struct(ex::Expr, m::Module)

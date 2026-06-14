@@ -5,6 +5,8 @@ using InteractiveUtils: code_llvm
 using Test
 using JET: AnyFrameModule, get_reports, report_package
 using ExproniconLite: ExproniconLite
+using Accessors: Accessors, @set, @reset
+using ConstructionBase: ConstructionBase
 
 # JET's findings vary substantially with the Julia / `Base` it's run against. Gate to Julia ≥ 1.12 to pin behavior to a recent baseline. On 1.12 (only) also ignore `Base`, because it flags a false positive inside `Base.similar(Vector{Expr}, ())` triggered (transitively) from `@packed` expansion; 1.13 doesn't have this issue.
 @static if VERSION >= v"1.12"
@@ -538,6 +540,53 @@ end
         @test occursin("runtests.jl", string(m.file))
         @test m.line > 0
     end
+end
+
+@packed struct AccImm
+    a::Int4
+    b::Int4
+    c::Int8
+end
+@packed mutable struct AccMut
+    a::Int4
+    b::Int4
+    c::Int8
+end
+@packed struct AccOuter
+    head::Int8
+    inner::AccImm
+end
+@packed struct AccEmpty end
+@testset "Accessors / ConstructionBase" begin
+    x = AccImm(1, 2, 3)
+    # `getproperties` is keyed by user-visible field names, not the underlying `_packed_fields_N` storage slot.
+    @test ConstructionBase.getproperties(x) === (a=Int4(1), b=Int4(2), c=Int8(3))
+    @test ConstructionBase.constructorof(AccImm) === AccImm
+
+    # `@set` on a grouped field rebuilds the `Pack<B>` slot with the new value; other group members stay.
+    y = @set x.a = -3
+    @test y === AccImm(-3, 2, 3)
+    @test x === AccImm(1, 2, 3)  # original untouched
+
+    # `@set` on the lone field doesn't touch the packed group.
+    @test (@set x.c = 9) === AccImm(1, 2, 9)
+
+    # Untyped RHS goes through the outer constructor's `convert`, just like direct construction.
+    @test (@set x.b = 5) === AccImm(1, 5, 3)
+
+    # Mutating accessor on a mutable still produces a fresh object (Accessors semantics).
+    m = AccMut(1, 2, 3)
+    @reset m.a = 7
+    @test m.a === Int4(7) && m.b === Int4(2) && m.c === Int8(3)
+
+    # Nested `@set` through a `@packed` field of another `@packed` struct.
+    o = AccOuter(10, AccImm(1, 2, 3))
+    @test (@set o.inner.a = -1) === AccOuter(10, AccImm(-1, 2, 3))
+    @test (@set o.head = 20)    === AccOuter(20, AccImm(1, 2, 3))
+
+    # Zero-field `@packed` struct: empty NamedTuple round-trips through `getproperties`/`setproperties`.
+    @test ConstructionBase.getproperties(AccEmpty()) === NamedTuple()
+    @test ConstructionBase.setproperties(AccEmpty(), NamedTuple()) === AccEmpty()
 end
 
 include("Aqua.jl")

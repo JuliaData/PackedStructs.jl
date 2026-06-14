@@ -18,6 +18,9 @@ const MAX_NATIVE_SIZE = maximum(NATIVE_SIZES)
 
 inline(body) = Expr(:block, Expr(:meta, :inline), body)
 
+# Hook for the `ConstructionBase` package extension. Defined here as a stub with no methods; the extension adds a single zero-argument method that returns the `ConstructionBase` module. The `@packed` macro consults this at expansion time (via `hasmethod`) and, when a method exists, registers a `ConstructionBase.getproperties` method for the new struct so `Accessors.@set` and other ConstructionBase-driven tools see the user-visible fields rather than the internal `_packed_fields_N` storage slots. A method overwrite in the extension would be rejected during precompilation, so the main module must not define one.
+function constructionbase_module end
+
 """
     pack(T::Type{<:Integer}, x) -> T
 

@@ -193,6 +193,37 @@ The same pattern works for `Float16` (pair into a `Pack32`), `Float64` (lone in 
 
 For a *struct* type you want to lay out at a non-default bit width, register `bits` on the inner field type — don't override `pack` to reorder or compress fields, because the reads won't follow your encoding.
 
+## Accessors.jl / ConstructionBase.jl
+
+`Accessors.jl` (and any other library that routes through `ConstructionBase.jl`, e.g. `BangBang`, `Setfield`, `StructArrays`) works on `@packed` structs once `ConstructionBase` is loaded. `@set foo.a = v`, `@reset foo.a = v`, and nested forms like `@set foo.inner.x = v` all behave as they would on a plain `struct`:
+
+```julia
+using PackedStructs, Accessors
+@emulate Int4 Int8
+
+@packed struct Counter
+    hits::Int4
+    misses::Int4
+    total::Int8
+end
+
+c = Counter(1, 2, 3)
+@set c.hits = 7   # Counter(7, 2, 3); original `c` untouched
+```
+
+A grouped-field `@set` rebuilds only the affected `Pack<B>` slot; sibling group members are preserved and the outer convert-doing constructor runs, so untyped right-hand sides like `@set c.hits = 7` work, too.
+
+### Load-order requirement
+
+The `ConstructionBase.getproperties` method is registered per `@packed` struct at macro-expansion time, gated on whether the `ConstructionBase` package extension is loaded. Load `ConstructionBase` (or any package that depends on it, such as `Accessors`) **before** the first `@packed` invocation you want covered. The typical script pattern just works:
+
+```julia
+using PackedStructs, Accessors   # any order, both before @packed
+@packed struct Foo …             # picks up ConstructionBase support
+```
+
+`@packed` structs expanded before `ConstructionBase` is loaded are not retroactively patched and will fall back to the default `ConstructionBase.setproperties`, which calls the outer constructor with the internal `Pack<B>` storage slot as an argument and fails with a constructor `MethodError`. If you maintain a package that defines `@packed` structs at its own load time and want Accessors support guaranteed for downstream users, either depend on `ConstructionBase` directly or document the requirement.
+
 ## Limitations
 
 Parametric `@packed struct Foo{T}` is rejected. Packing decisions (which fields share a `Pack<B>`, what `B` is, and the resulting `struct` field list) are made at macro-expansion time from each field's `bits`, but a type parameter has no concrete `bits` yet. This is also rarely worth the complication: a layout that packs well for one choice of `T` typically wastes bits or fails to group for another, so there is no single "good" packed layout to commit to.
