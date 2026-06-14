@@ -404,6 +404,29 @@ end
             BadArity() = new()
         end
     end
+
+    @testset "macro-wrapped inner constructors" begin
+        @packed struct Wrapped53
+            a::Int5
+            b::UInt3
+            Base.@propagate_inbounds function Wrapped53(a::Int5, b::UInt3)
+                @boundscheck b > 0 || throw(ArgumentError("b must be positive"))
+                new(a, b)
+            end
+        end
+        # The constructor still produces a packed struct: one Pack8 storage slot.
+        @test sizeof(Wrapped53) === 1
+        @test fieldtypes(Wrapped53) == (Pack8{Tuple{Int5, UInt3}},)
+        w = Wrapped53(Int5(3), UInt3(4))
+        @test w.a === Int5(3) && w.b === UInt3(4)
+        # `@boundscheck` runs without an `@inbounds` opt-out.
+        @test_throws ArgumentError Wrapped53(Int5(1), UInt3(0))
+        # Default convert-doing outer is suppressed because the macro-wrapped function is recognized as an inner constructor.
+        @test_throws MethodError Wrapped53(3, 4)
+        # An `@inbounds` caller propagates through and elides the `@boundscheck`, so the invalid value is silently accepted.
+        f() = @inbounds Wrapped53(Int5(1), UInt3(0))
+        @test f().b === UInt3(0)
+    end
 end
 
 @testset "setproperty!" begin

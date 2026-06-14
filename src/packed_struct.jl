@@ -205,8 +205,24 @@ function create_packed_struct!(exprs, s, pfs::Vector{<:APackedFields}, source::L
         push!(exprs, define_constructionbase_methods(constructionbase_module(), pfs, atype, s.name, source))
 end
 
+# `JLStruct` only treats bare `function`/`f(...) = ...` definitions in the struct body as constructors. A macro-wrapped form like `Base.@propagate_inbounds function Foo(...)` ends up in `misc` (so `new(...)` is never rewritten and the auto-outer constructor isn't suppressed). Mirror what Julia's own struct lowering sees by expanding top-level macrocalls in the struct body before parsing. `recursive=false` keeps the user's macros inside the function body untouched; only the outer layer that hides the function shape is peeled.
+function expand_body_macrocalls!(ex::Expr, m::Module)
+    struct_ex = ex
+    while struct_ex isa Expr && struct_ex.head === :macrocall
+        struct_ex = last(struct_ex.args)
+    end
+    struct_ex isa Expr && struct_ex.head === :struct || return ex
+    body = last(struct_ex.args)
+    body isa Expr && body.head === :block || return ex
+    for (i, arg) in pairs(body.args)
+        arg isa Expr && arg.head === :macrocall || continue
+        body.args[i] = macroexpand(m, arg; recursive=false)
+    end
+    return ex
+end
+
 function parse_struct(ex::Expr, m::Module)
-    s = JLStruct(ex)
+    s = JLStruct(expand_body_macrocalls!(ex, m))
     # `JLStruct` keeps each field's type as the raw expression the user wrote (`Symbol`, qualified `Foo.Bar`, parametric `Vector{Int}`, …). Resolve it to the actual type so we can query its size.
     for f in s.fields
         f.type = Core.eval(m, f.type)

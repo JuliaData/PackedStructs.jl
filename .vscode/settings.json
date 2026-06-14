@@ -35,6 +35,8 @@
         "julialang",
         "linewrap",
         "lshift",
+        "macrocall",
+        "macrocalls",
         "nbits",
         "newgroups",
         "newpaddedbits",
