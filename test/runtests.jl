@@ -423,9 +423,13 @@ end
         @test_throws ArgumentError Wrapped53(Int5(1), UInt3(0))
         # Default convert-doing outer is suppressed because the macro-wrapped function is recognized as an inner constructor.
         @test_throws MethodError Wrapped53(3, 4)
-        # An `@inbounds` caller propagates through and elides the `@boundscheck`, so the invalid value is silently accepted.
+        # An `@inbounds` caller propagates through and elides the `@boundscheck`, unless Julia was started with `--check-bounds=yes`.
         f() = @inbounds Wrapped53(Int5(1), UInt3(0))
-        @test f().b === UInt3(0)
+        if Base.JLOptions().check_bounds == 1
+            @test_throws ArgumentError f()
+        else
+            @test f().b === UInt3(0)
+        end
     end
 end
 
@@ -507,7 +511,7 @@ end
 end
 
 # Counts depend on several optimizations done in Julia and especially LLVM. The code seems to be optimum starting from Julia 1.11.
-@static if VERSION >= v"1.11"
+if VERSION >= v"1.11" && (opts = Base.JLOptions()).code_coverage == 0 && opts.check_bounds == 0
 @testset "performance invariants" begin
     using InteractiveUtils
 
