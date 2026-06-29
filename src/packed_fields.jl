@@ -15,6 +15,9 @@ struct Field
     isconst::Bool
 end
 
+# A `Pad{N}` field is layout-only: it reserves bits but has no value, name, or accessors.
+ispad(f::Field) = f.type <: Pad
+
 abstract type APackedFields end
 struct PackedFields{L} <: APackedFields
     supporttype::Symbol
@@ -83,7 +86,7 @@ function define_getindex(pf::APackedFields)
     # The `x` argument name is referenced by symbol `:x` inside `unpack_field_expr`; keep the two in sync.
     args = [:(x::$T), :(i::Integer)]
 
-    cases = (:(i == $j && return $(unpack_field_expr(f.type, pf, f.bitoffset))) for (j, f) in enumerate(pf.fields))
+    cases = (:(i == $j && return $(unpack_field_expr(f.type, pf, f.bitoffset))) for (j, f) in enumerate(pf.fields) if !ispad(f))
 
     body = Expr(:block, cases...) |> inline
     JLFunction(name=:(Base.getindex); args, body)

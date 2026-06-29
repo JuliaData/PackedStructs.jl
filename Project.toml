@@ -1,6 +1,6 @@
 name = "PackedStructs"
 uuid = "3f4c4bcc-b4a0-426b-9836-06ea373f3441"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Patrick Häcker <patrick.haecker@de.bosch.com>"]
 
 [workspace]

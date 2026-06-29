@@ -4,7 +4,7 @@ using EmulatedBitIntegers: EmulatedBitIntegers, bits, zext, storagetypeof
 using ExproniconLite: JLStruct, JLField, JLFunction, codegen_ast
 using PrecompileTools: @compile_workload
 
-export @packed
+export @packed, Pad
 VERSION >= v"1.11.0-DEV.469" && "public pack" |> Meta.parse |> eval
 
 # `Memory{T}` (Julia ≥ 1.11) is preferred — it's a fixed-size, lower-overhead alternative to `Vector{T}` for the throwaway scratch buffers in the grouping algorithm and `Pack<B>` field staging. On the 1.10 LTS, fall back to `Vector{T}`: the call sites only use `(undef, n)` construction, indexing, and `fill!`, which both types share.
@@ -17,6 +17,19 @@ const NATIVE_SIZES = (8, 16, 32, 64)
 const MAX_NATIVE_SIZE = maximum(NATIVE_SIZES)
 
 inline(body) = Expr(:block, Expr(:meta, :inline), body)
+
+"""
+    Pad{N}
+
+Reserved `@packed` field type that occupies exactly `N` bits of padding. A `_::Pad{N}`
+field contributes its width to the bit layout but is excluded from the constructor,
+`propertynames`, `getproperty`/`setproperty!`, and `show`; its bits are always zero.
+A `Pad` participates in grouping like any other fixed-width field and never crosses a
+group boundary, so split the padding into multiple `Pad` fields if you want to optimize
+the layout.
+"""
+struct Pad{N} end
+EmulatedBitIntegers.bits(::Type{Pad{N}}) where N = N
 
 # Hook for the `ConstructionBase` package extension. Defined here as a stub with no methods; the extension adds a single zero-argument method that returns the `ConstructionBase` module. The `@packed` macro consults this at expansion time (via `hasmethod`) and, when a method exists, registers a `ConstructionBase.getproperties` method for the new struct so `Accessors.@set` and other ConstructionBase-driven tools see the user-visible fields rather than the internal `_packed_fields_N` storage slots. A method overwrite in the extension would be rejected during precompilation, so the main module must not define one.
 function constructionbase_module end

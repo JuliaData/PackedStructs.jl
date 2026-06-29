@@ -1,10 +1,12 @@
-# Build the value expression for one slot in the rewritten `new(...)` call: `convert(T, v)` for a lone `pf`, or `Pack<B>(convert(T1, v1), …)` for a grouped one. `values` is one expression per user-visible field in `pf`.
+# Build the value expression for one slot in the rewritten `new(...)` call: `convert(T, v)` for a lone `pf`, or `Pack<B>(convert(T1, v1), …)` for a grouped one. `values` is one expression per user-visible (non-pad) field in `pf`; pad fields are filled with a zero `Pad{N}()` so the storage slot keeps that many zero bits.
 function call_constructor(pf::APackedFields, values)
-    args = (:(convert($(f.type), $v)) for (f, v) in zip(pf.fields, values))
+    vs = Iterators.Stateful(values)
+    args = (ispad(f) ? :($(f.type)()) : :(convert($(f.type), $(popfirst!(vs)))) for f in pf.fields)
     return length(pf) == 1 ? first(args) : Expr(:call, packtype(pf), args...)
 end
 
-build_packed_args(pfs, value_at) = [call_constructor(pf, (value_at(j) for j in r)) for (pf, r) in zip(pfs, ranges(length.(pfs)))]
+publiclength(pf) = count(!ispad, pf.fields)
+build_packed_args(pfs, value_at) = [call_constructor(pf, (value_at(j) for j in r)) for (pf, r) in zip(pfs, ranges(publiclength.(pfs)))]
 
 # All `new` args are simple positional expressions: arity is known at macro time, split values per group and build the rewritten `new` call directly.
 function rewrite_new_simple(values, pfs, n_public_fields)
@@ -38,7 +40,7 @@ end
 function define_packed_struct!(s, pfs::Vector{<:APackedFields}, atype)
     s.typevars |> isempty || "Type variables in packed structs are not supported yet" |> error
 
-    n_public_fields = sum(length, pfs; init=0)
+    n_public_fields = sum(publiclength, pfs; init=0)
     for c in s.constructors
         c.body = rewrite_new(c.body, pfs, n_public_fields)
     end
@@ -60,13 +62,13 @@ function define_packed_struct!(s, pfs::Vector{<:APackedFields}, atype)
     return s
 end
 
-# Flat iterator over the user-visible `Field`s across all groups, in source order.
-publicfields(pfs) = (f for pf in pfs for f in pf.fields)
+# Flat iterator over the user-visible `Field`s across all groups, in source order. `Pad` fields are layout-only and excluded.
+publicfields(pfs) = (f for pf in pfs for f in pf.fields if !ispad(f))
 
 # Define an untyped outer constructor that converts each argument to its field type before forwarding to the group constructor. This mirrors the default constructor Julia normally defines.
 function define_constructor(pfs::Vector{<:APackedFields}, name)
     args = [f.publicname for f in publicfields(pfs)]
-    body = Expr(:call, name, (call_constructor(pf, (f.publicname for f in pf.fields)) for pf in pfs)...) |> inline
+    body = Expr(:call, name, (call_constructor(pf, (f.publicname for f in pf.fields if !ispad(f))) for pf in pfs)...) |> inline
     return JLFunction(; name, args, body)
 end
 
@@ -82,10 +84,10 @@ function define_getproperty(pfs::Vector{<:APackedFields}, atype)
     args = [:(x::$atype), :(s::Symbol)]
     getters = Iterators.flatmap(enumerate(pfs)) do (i, pf)
         if isgroup(pf)
-            return (:(s === $(f.publicname |> QuoteNode) && return getfield(x, $i)[$j]) for (j, f) in enumerate(pf.fields))
+            return (:(s === $(f.publicname |> QuoteNode) && return getfield(x, $i)[$j]) for (j, f) in enumerate(pf.fields) if !ispad(f))
         else
             # Use an unnecessary loop to get the same type as above for type-stable flattening.
-            return (:(s === $(f.publicname |> QuoteNode) && return getfield(x, s)) for f in pf.fields)
+            return (:(s === $(f.publicname |> QuoteNode) && return getfield(x, s)) for f in pf.fields if !ispad(f))
         end
     end
     body = Expr(:block, getters...) |> inline
@@ -98,7 +100,8 @@ function set_branch(g::Int, pf::APackedFields, j::Int, f::Field)
     # Mimic Julia's own const-write message verbatim so user-level error handling behaves identically across plain and `@packed` mutable structs.
     f.isconst && return :(s === $qn && error("setfield!: const field .", s, " of type ", typeof(x), " cannot be changed"))
     isgroup(pf) || return :(s === $qn && return setfield!(x, s, convert($(f.type), v)))
-    pack_args = (k == j ? :(convert($(pf.fields[k].type), v)) : :(getfield(x, $g)[$k]) for k in 1:length(pf))
+    slot(k) = ispad(pf.fields[k]) ? :($(pf.fields[k].type)()) : k == j ? :(convert($(pf.fields[k].type), v)) : :(getfield(x, $g)[$k])
+    pack_args = (slot(k) for k in 1:length(pf))
     return :(s === $qn && return setfield!(x, $g, $(Expr(:call, packtype(pf), pack_args...))))
 end
 
@@ -109,7 +112,7 @@ function define_setproperty(pfs::Vector{<:APackedFields}, atype, ismutable::Bool
         return JLFunction(name=:(Base.setproperty!); args, body)
     end
     setters = Iterators.flatmap(enumerate(pfs)) do (g, pf)
-        return (set_branch(g, pf, j, f) for (j, f) in enumerate(pf.fields))
+        return (set_branch(g, pf, j, f) for (j, f) in enumerate(pf.fields) if !ispad(f))
     end
     body = Expr(:block, setters..., :(error("type ", typeof(x), " has no field ", s))) |> inline
     return JLFunction(name=:(Base.setproperty!); args, body)

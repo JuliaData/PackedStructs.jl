@@ -224,6 +224,22 @@ using PackedStructs, Accessors   # any order, both before @packed
 
 `@packed` structs expanded before `ConstructionBase` is loaded are not retroactively patched and will fall back to the default `ConstructionBase.setproperties`, which calls the outer constructor with the internal `Pack<B>` storage slot as an argument and fails with a constructor `MethodError`. If you maintain a package that defines `@packed` structs at its own load time and want Accessors support guaranteed for downstream users, either depend on `ConstructionBase` directly or document the requirement.
 
+## Padding
+
+To reserve bits at a chosen position without exposing a field, use a `Pad{N}` field named `_`:
+
+```julia
+@packed struct Frame
+    a::Int3
+    _::Pad{5}    # 5 bits of padding after `a`
+    b::Int8
+end
+```
+
+`Pad{N}` contributes exactly `N` bits to the layout but is excluded from the constructor, `propertynames`, `getproperty`/`setproperty!`, and `show`; its bits are always zero. So `Frame(a, b)` takes two arguments and `propertynames` reports `(:a, :b)`.
+
+A `Pad` participates in grouping like any other fixed-width field and never crosses a group boundary. If you want padding that should span a native size (e.g. fill out a group *and* add a lone byte after it), write two `Pad` fields and split it yourself.
+
 ## Limitations
 
 Parametric `@packed struct Foo{T}` is rejected. Packing decisions (which fields share a `Pack<B>`, what `B` is, and the resulting `struct` field list) are made at macro-expansion time from each field's `bits`, but a type parameter has no concrete `bits` yet. This is also rarely worth the complication: a layout that packs well for one choice of `T` typically wastes bits or fails to group for another, so there is no single "good" packed layout to commit to.

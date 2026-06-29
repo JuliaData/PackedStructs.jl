@@ -616,4 +616,47 @@ end
     @test ConstructionBase.setproperties(AccEmpty(), NamedTuple()) === AccEmpty()
 end
 
+@emulate Int3
+@testset "Pad" begin
+    # `_::Pad{5}` reserves 5 padding bits. Int3+Pad{5} fill a Pack8; b is a lone byte.
+    @packed struct Padded
+        a::Int3
+        _::Pad{5}
+        b::Int8
+    end
+    p = Padded(2, 7)
+    # Pad fields are excluded from the public API.
+    @test propertynames(p) == (:a, :b)
+    @test p.a === Int3(2) && p.b === Int8(7)
+    @test sizeof(Padded) == 2
+    @test fieldtypes(Padded) == (Pack8{Tuple{Int3, Pad{5}}}, Int8)
+    # Padding bits are zero: a3=2 sits in the top 3 bits, the low 5 bits stay 0.
+    @test reinterpret(UInt8, getfield(p, 1)) === 0b010_00000
+    # Equal-valued constructions are bit-identical regardless of padding.
+    @test p === Padded(2, 7)
+    @test hash(p) == hash(Padded(2, 7))
+
+    # Mutable: assigning a real field preserves the zero padding.
+    @packed mutable struct PaddedMut
+        x::Int3
+        _::Pad{5}
+        y::Int8
+    end
+    m = PaddedMut(1, 9)
+    m.x = 3; m.y = 5
+    @test m.x === Int3(3) && m.y === Int8(5)
+    @test reinterpret(UInt8, getfield(m, 1)) === 0b011_00000
+    @test propertynames(m) == (:x, :y)
+
+    # Inner constructor sees only the public arity (pads filled automatically).
+    @packed struct PadCtor
+        a::Int3
+        _::Pad{5}
+        b::Int8
+        PadCtor(a) = new(a, 2a)
+    end
+    @test PadCtor(3) === PadCtor(3)
+    @test PadCtor(3).b === Int8(6)
+end
+
 include("Aqua.jl")
