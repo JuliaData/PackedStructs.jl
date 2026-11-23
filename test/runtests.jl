@@ -617,6 +617,11 @@ end
 end
 
 @emulate Int3
+# Top level, so that `OuterLonePad` in the testset below can use it as a field type.
+@packed struct LonePad
+    a::UInt8
+    _::Pad{8}
+end
 @testset "Pad" begin
     # `_::Pad{5}` reserves 5 padding bits. Int3+Pad{5} fill a Pack8; b is a lone byte.
     @packed struct Padded
@@ -657,6 +662,200 @@ end
     end
     @test PadCtor(3) === PadCtor(3)
     @test PadCtor(3).b === Int8(6)
+
+    # A `Pad` alone in its group keeps its group width in a private `Pack<B>` slot.
+    l = LonePad(0x05)
+    @test sizeof(LonePad) == 2
+    @test fieldtypes(LonePad) == (UInt8, Pack8{Tuple{Pad{8}}})
+    @test reinterpret(UInt8, getfield(l, 2)) === 0x00
+    @test propertynames(l) == (:a,)
+    @test l.a === 0x05 && l === LonePad(5)
+    @test repr(l) == repr(LonePad) * "(0x05)"
+    @test (@set l.a = 7) === LonePad(7)
+
+    @packed struct LoneOddPad
+        a::UInt8
+        _::Pad{5}
+        b::UInt8
+    end
+    @test sizeof(LoneOddPad) == 3
+    @test fieldtypes(LoneOddPad) == (UInt8, Pack8{Tuple{Pad{5}}}, UInt8)
+    @test LoneOddPad(1, 2).b === 0x02
+
+    @packed mutable struct TwoLonePads
+        a::UInt8
+        _::Pad{8}
+        b::UInt8
+        _::Pad{8}
+        TwoLonePads(a) = new(a, a + 1)
+    end
+    t = TwoLonePads(0x03)
+    @test sizeof(TwoLonePads) == 4
+    @test propertynames(t) == (:a, :b)
+    t.b = 0x09
+    @test t.a === 0x03 && t.b === 0x09
+    @test reinterpret(UInt8, getfield(t, 2)) === reinterpret(UInt8, getfield(t, 4)) === 0x00
+
+    @packed struct PadOnly
+        _::Pad{8}
+    end
+    @test sizeof(PadOnly) == 1
+    @test propertynames(PadOnly()) == ()
+    @test PadOnly() === PadOnly()
+
+    @packed struct WidePad
+        a::UInt8
+        _::Pad{64}
+    end
+    @test fieldtypes(WidePad) == (UInt8, Pack64{Tuple{Pad{64}}})
+    @test_throws ArgumentError @macroexpand @packed struct TooWidePad
+        a::UInt8
+        _::Pad{65}
+    end
+
+    # A struct with a lone pad nests into another `@packed` struct.
+    @packed struct OuterLonePad
+        x::Int3
+        inner::LonePad
+        y::Int3
+    end
+    o = OuterLonePad(1, LonePad(0x7f), -1)
+    @test o.x === Int3(1) && o.inner === LonePad(0x7f) && o.y === Int3(-1)
+end
+
+@emulate UInt7 Int7
+@packed struct PadUInt7
+    _::Pad{1}
+    a::UInt7
+end
+@testset "explicit padding around integers" begin
+    @test fieldtypes(PadUInt7) == (Pack8{Tuple{Pad{1}, UInt7}},)
+    @test sizeof(PadUInt7) == 1
+    @test bits(PadUInt7) == 8
+    @test propertynames(PadUInt7(3)) == (:a,)
+    @test PadUInt7(3).a === UInt7(3)
+
+    @packed struct NestedPadUInt7
+        prefix::Bool
+        inner::PadUInt7
+        suffix::UInt7
+    end
+    u = NestedPadUInt7(true, PadUInt7(0x6a), 0x55)
+    @test reinterpret(UInt16, getfield(u, 1)) === 0xb555
+    @test u.inner === PadUInt7(0x6a)
+
+    @packed mutable struct PadUInt7Neighbors
+        _::Pad{1}
+        a::UInt7
+        b::Int4
+        c::Int4
+    end
+    m = PadUInt7Neighbors(1, 2, -3)
+    @test fieldtypes(PadUInt7Neighbors) == (Pack8{Tuple{Pad{1}, UInt7}}, Pack8{Tuple{Int4, Int4}})
+    m.a = 127
+    @test m.a === UInt7(127) && m.b === Int4(2) && m.c === Int4(-3)
+    @test repr(m) == repr(PadUInt7Neighbors) * "($(repr(UInt7(127))), $(repr(Int4(2))), $(repr(Int4(-3))))"
+
+    @packed struct PadUInt7Ctor
+        _::Pad{1}
+        a::UInt7
+        PadUInt7Ctor() = new(5)
+    end
+    @test PadUInt7Ctor().a === UInt7(5)
+
+    @packed struct PadInt7
+        _::Pad{1}
+        a::Int7
+    end
+    @test fieldtypes(PadInt7) == (Pack8{Tuple{Pad{1}, Int7}},)
+    @test PadInt7(-1).a === Int7(-1)
+
+    # A pad after the field places the field in the top bits, a different layout.
+    @packed struct UInt7Pad
+        a::UInt7
+        _::Pad{1}
+    end
+    @test fieldtypes(UInt7Pad) == (Pack8{Tuple{UInt7, Pad{1}}},)
+    @test reinterpret(UInt8, getfield(UInt7Pad(1), 1)) === 0b0000001_0
+end
+
+# Top level, so that `BoolOuter` in the testset below can use it as a field type.
+struct BoolWrap
+    on::Bool
+    n::Int3
+end
+@packed struct PadBool
+    _::Pad{7}
+    a::Bool
+end
+@testset "Bool fields" begin
+    @test bits(Bool) == 1
+    @test bits(BoolWrap) == 4
+
+    @packed struct Flags
+        a::Bool
+        b::Bool
+        c::Int3
+        d::Bool
+        e::UInt3
+    end
+    @test sizeof(Flags) == 2
+    @test all(Iterators.product((false, true), (false, true), Int3.(-4:3), (false, true), UInt3.(0:7))) do (a, b, c, d, e)
+        x = Flags(a, b, c, d, e)
+        (x.a, x.b, x.c, x.d, x.e) === (a, b, c, d, e)
+    end
+
+    # A `Bool` sharing a group with a wide field.
+    @packed struct BoolWide
+        a::Bool
+        b::UInt30
+    end
+    @test fieldtypes(BoolWide) == (Pack32{Tuple{Bool, UInt30}},)
+    w = BoolWide(true, UInt30(5))
+    @test w.a === true && w.b === UInt30(5)
+    @test BoolWide(false, UInt30(5)).a === false
+
+    # `Bool` fields of a nested struct and of a mutable struct.
+    @packed mutable struct BoolOuter
+        w::BoolWrap
+        f::Bool
+        g::Bool
+        h::Bool
+    end
+    @test sizeof(BoolOuter) == 1
+    y = BoolOuter(BoolWrap(true, Int3(-2)), false, true, false)
+    @test y.w === BoolWrap(true, Int3(-2)) && (y.f, y.g, y.h) === (false, true, false)
+    y.g = false
+    y.f = true
+    @test (y.f, y.g, y.h) === (true, false, false) && y.w === BoolWrap(true, Int3(-2))
+
+    # Grouping saves nothing, so the `Bool` stays a plain field.
+    @packed struct BoolByte
+        a::Bool
+        b::UInt8
+    end
+    @test fieldtypes(BoolByte) == (Bool, UInt8)
+
+    # Padding before a `Bool` leaves it in the low bit, even when nested.
+    @test fieldtypes(PadBool) == (Pack8{Tuple{Pad{7}, Bool}},)
+    @test bits(PadBool) == 8
+    @test PadBool(true).a === true
+    @packed struct NestedPadBool
+        prefix::Bool
+        inner::PadBool
+        suffix::UInt7
+    end
+    p = NestedPadBool(true, PadBool(true), 0x65)
+    @test reinterpret(UInt16, getfield(p, 1)) === 0x80e5
+    @test p.inner === PadBool(true)
+
+    # Padding after a `Bool` places it in the high bit.
+    @packed struct BoolPad
+        a::Bool
+        _::Pad{7}
+    end
+    @test fieldtypes(BoolPad) == (Pack8{Tuple{Bool, Pad{7}}},)
+    @test reinterpret(UInt8, getfield(BoolPad(true), 1)) === 0b1_0000000
 end
 
 include("Aqua.jl")

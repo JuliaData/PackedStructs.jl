@@ -26,7 +26,9 @@ field contributes its width to the bit layout but is excluded from the construct
 `propertynames`, `getproperty`/`setproperty!`, and `show`; its bits are always zero.
 A `Pad` participates in grouping like any other fixed-width field and never crosses a
 group boundary, so split the padding into multiple `Pad` fields if you want to optimize
-the layout.
+the layout. A `Pad` alone in its group still occupies the group's native width, so
+`a::UInt8; _::Pad{5}; b::UInt8` takes 3 bytes. `N` must not exceed 64, the largest native
+size.
 """
 struct Pad{N} end
 EmulatedBitIntegers.bits(::Type{Pad{N}}) where N = N

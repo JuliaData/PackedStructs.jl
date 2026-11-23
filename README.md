@@ -69,6 +69,8 @@ julia> (reinterpret(UInt8, foo), foo.first, foo.second) .|> bitstring
 ("00101111", "0010", "1111")
 ```
 
+A `Bool` field contributes one bit to its group, so several flags can share a byte with their neighbors. Reading a `Bool` that shares a group costs a shift or a mask. A `Bool` in a group by itself is stored as a plain byte.
+
 You are not limited to primitive types as fields. You can also use wrapper types which are used for e.g. type safety
 
 ```jldoctest
@@ -260,7 +262,9 @@ end
 
 `Pad{N}` contributes exactly `N` bits to the layout but is excluded from the constructor, `propertynames`, `getproperty`/`setproperty!`, and `show`; its bits are always zero. So `Frame(a, b)` takes two arguments and `propertynames` reports `(:a, :b)`.
 
-A `Pad` participates in grouping like any other fixed-width field and never crosses a group boundary. If you want padding that should span a native size (e.g. fill out a group *and* add a lone byte after it), write two `Pad` fields and split it yourself.
+A `Pad` participates in grouping like any other fixed-width field and never crosses a group boundary. If you want padding that should span a native size (e.g. fill out a group *and* add a lone byte after it), write two `Pad` fields and split it yourself. A `Pad` alone in its group still occupies the group's native width, so `a::UInt8; _::Pad{5}; b::UInt8` takes 3 bytes. `N` must not exceed 64, the largest native size: write several `Pad` fields for wider padding.
+
+Explicit padding also contributes to the logical width when a packed struct is nested. For example, `_::Pad{7}; a::Bool` contributes eight bits to its parent, with `a` in the low bit.
 
 ## Limitations
 

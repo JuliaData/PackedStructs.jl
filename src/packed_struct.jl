@@ -2,11 +2,15 @@
 function call_constructor(pf::APackedFields, values)
     vs = Iterators.Stateful(values)
     args = (ispad(f) ? :($(f.type)()) : :(convert($(f.type), $(popfirst!(vs)))) for f in pf.fields)
-    return length(pf) == 1 ? first(args) : Expr(:call, packtype(pf), args...)
+    return isgroup(pf) ? Expr(:call, packtype(pf), args...) : first(args)
 end
 
 publiclength(pf) = count(!ispad, pf.fields)
-build_packed_args(pfs, value_at) = [call_constructor(pf, (value_at(j) for j in r)) for (pf, r) in zip(pfs, ranges(publiclength.(pfs)))]
+# Index instead of `zip`: JET reports false positives inside `Base.Iterators.zip` for a `Vector{PackedFields}`.
+function build_packed_args(pfs, value_at)
+    rs = ranges(publiclength.(pfs))
+    return [call_constructor(pfs[k], (value_at(j) for j in rs[k])) for k in eachindex(pfs, rs)]
+end
 
 # All `new` args are simple positional expressions: arity is known at macro time, split values per group and build the rewritten `new` call directly.
 function rewrite_new_simple(values, pfs, n_public_fields)

@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** require `EmulatedBitIntegers` 0.6, where `bits(Bool) == 1`. A `Bool` field now contributes 1 bit instead of 8 to its group. This can change `sizeof` and field layout, including for nested structs. A `Bool` in a group by itself still occupies one byte.
+
+### Fixed
+
+- A `Bool` field that shares a group with other fields no longer throws `bitcast: argument size does not match size of target type` on construction.
+- A `Pad` field that ends up alone in its group now occupies the group's native width. Previously its bits were dropped, the outer constructor required a `Pad` argument, and two such pads failed with a duplicate field name `_`.
+- `Pad{N}` with `N > 64` now throws an `ArgumentError` at macro expansion instead of silently occupying no bits.
+
 ## [0.3.2] - 2026-09-21
 
 ### Changed
@@ -28,6 +40,7 @@ Initial release of `PackedStructs` as a standalone package, extracted from a mon
 - `Accessors.jl` support through a `ConstructionBase` package extension.
 - Precompilation of the common code paths via `PrecompileTools`.
 
+[Unreleased]: https://github.com/PatrickHaecker/PackedStructs.jl/compare/v0.3.2...HEAD
 [0.3.2]: https://github.com/PatrickHaecker/PackedStructs.jl/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/PatrickHaecker/PackedStructs.jl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/PatrickHaecker/PackedStructs.jl/releases/tag/v0.3.0

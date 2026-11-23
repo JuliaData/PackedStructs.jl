@@ -40,7 +40,8 @@ function PackedFields{L}(fields::Vector{JLField}, nbits::Int) where L
     PackedFields{L}(supporttype, signedsupporttype, nbits, fieldtypes, fieldobjects)
 end
 PackedFields(fields::Vector{JLField}, bits::Integer) = PackedFields{fields |> length}(fields, convert(Int, bits))
-isgroup(x::PackedFields{L}) where L = L > 1
+# Whether `x` is stored in a private `Pack<B>` slot: a group of several fields, or a lone `Pad`, whose own type `Pad{N}` has no storage.
+isgroup(x::PackedFields{L}) where L = L > 1 || ispad(x.fields[1])
 Base.length(x::PackedFields{L}) where L = L
 
 # Symbol of the parametric primitive type for a given total bit width, e.g. `Pack8`. Construction and `getindex` methods exist only for tuple parameterizations that some `@packed` struct has produced; `Pack<B>` is an internal storage primitive, not a standalone container.
@@ -48,8 +49,7 @@ packname(nbits::Integer) = Symbol("Pack", nbits)
 # Symbol of the parametric abstract supertype for a given total bit width, e.g. `APack8`. Declared alongside the primitive type so users can specialize behavior on `APack<B>{Tuple{…}}`.
 packabsname(nbits::Integer) = Symbol("A", packname(nbits))
 # Concrete type expression for this packing: `PackedStructs.Pack<B>{Tuple{T1, …, TL}}` for groups, or the lone field's type for non-groups. The `Pack<B>` reference is module-qualified so the expression resolves correctly when spliced into the caller's module.
-packtype(pf::PackedFields{1}) = pf.fieldtypes[1]
-packtype(pf::PackedFields{L}) where L = :($PackedStructs.$(packname(pf.bits)){Tuple{$(pf.fieldtypes...)}})
+packtype(pf::PackedFields) = isgroup(pf) ? :($PackedStructs.$(packname(pf.bits)){Tuple{$(pf.fieldtypes...)}}) : pf.fieldtypes[1]
 
 # Pre-declare the parametric primitive and its abstract supertype for each native width. `NATIVE_SIZES` fully determines which group widths can occur, so `create_packed_fields!` only needs to dedup methods per concrete tuple parameterization — never the types themselves.
 for nbits in NATIVE_SIZES

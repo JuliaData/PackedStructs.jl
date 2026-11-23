@@ -67,6 +67,9 @@ end
 
 function group(s::JLStruct)
     isempty(s.fields) && return PackedFields[]
+    for f in s.fields
+        f.type <: Pad && bits(f.type) > MAX_NATIVE_SIZE && lazy"`$(f.type)` is wider than the largest native size of $MAX_NATIVE_SIZE bits: split it into several `Pad` fields." |> ArgumentError |> throw
+    end
     # Mutable field types are heap-allocated boxes: the value stored in the parent is a pointer, not the inner bits. Packing a pointer alongside other fields' bits inside an opaque `Pack<B>` primitive would hide it from GC tracing. Flag each mutable as lone so the DP isolates it.
     lone = [f.type |> ismutabletype for f in s.fields]
     bitsizes = [l ? 8 * sizeof(Ptr) : bits(f.type) for (f, l) in zip(s.fields, lone)]
