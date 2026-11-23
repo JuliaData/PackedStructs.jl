@@ -163,7 +163,7 @@ As in plain Julia, providing any inner constructor suppresses both the default i
 
 ## Interaction with `Base`
 
-`propertynames`, `getproperty`, `setproperty!`, `==`, `isequal`, `hash`, `show`, `print`, `repr`, `deepcopy`, and `Dict`/`Set` use all behave as they would for a plain `struct`. The lower-level introspection APIs (`fieldnames`, `fieldtype`, `nfields`, `dump`) report the underlying storage slots (e.g. `_packed_fields_1::Pack8{…}`) rather than the user-visible names, since they are name-based and `getfield` is a builtin that can't be intercepted.
+`propertynames`, `getproperty`, `setproperty!`, `==`, `isequal`, `hash`, `show`, `print`, `repr`, `deepcopy`, and `Dict`/`Set` use all behave as they would for a plain `struct`. Even `propertynames(x, true)` lists only the user-visible properties. The underlying storage slots (e.g. `_packed_fields_1::Pack8{…}`) are not properties, but they are visible through lower-level APIs such as `fieldnames`, `getfield`, and `dump`.
 
 ### Type hierarchy
 

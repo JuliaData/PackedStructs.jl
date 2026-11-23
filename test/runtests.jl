@@ -3,18 +3,25 @@ using PackedStructs
 using PackedStructs: Pack8, Pack16, Pack32, Pack64
 using InteractiveUtils: code_llvm
 using Test
-using JET: AnyFrameModule, get_reports, report_package
 using ExproniconLite: ExproniconLite
 using Accessors: Accessors, @set, @reset
 using ConstructionBase: ConstructionBase
 
-# JET's findings vary substantially with the Julia / `Base` it's run against. Gate to Julia ≥ 1.12 to pin behavior to a recent baseline. On 1.12 (only) also ignore `Base`, because it flags a false positive inside `Base.similar(Vector{Expr}, ())` triggered (transitively) from `@packed` expansion; 1.13 doesn't have this issue.
-@static if VERSION >= v"1.12"
-@testset "JET" begin
-    # ExproniconLite.jl (generated from Expronicon.jl) is not JET-clean, so exclude it from testing. This can be improved in the future, but as Expronicon.jl is proven in use, there is no urgency.
-    ignored = (ExproniconLite |> AnyFrameModule, (@static VERSION < v"1.13" ? (Base |> AnyFrameModule,) : ())...)
-    @test report_package(PackedStructs, ignored_modules=ignored) |> get_reports |> isempty
-end
+# Julia prereleases still run the functional and codegen tests. Run package-wide
+# inference checks on stable releases, where JET reports fewer false positives.
+@static if VERSION >= v"1.12" && isempty(VERSION.prerelease)
+    using JET: JET_AVAILABLE, AnyFrameModule, get_reports, report_package
+
+    @testset "JET" begin
+        @test begin
+            # Julia 1.12 reports a false positive inside `Base.similar(Vector{Expr}, ())`.
+            ignored = (ExproniconLite |> AnyFrameModule, (@static VERSION < v"1.13" ? (Base |> AnyFrameModule,) : ())...)
+            result = report_package(PackedStructs; ignored_modules=ignored)
+            clean = isempty(get_reports(result))
+            clean || show(stderr, MIME"text/plain"(), result)
+            clean
+        end skip=!JET_AVAILABLE
+    end
 end
 
 using PackedStructs: group
@@ -249,16 +256,23 @@ end
 end
 
 @emulate UInt22
-@testset "propertynames" begin
+@testset "property access" begin
     @packed struct PropertyNames
+        prefix::Int8
         a1::UInt10
         a2::UInt22
-        a3::Int8
-        a4::Int8
+        suffix::Int8
     end
     p = PropertyNames(1, 2, 3, 4)
-    @test propertynames(p) == (:a1, :a2, :a3, :a4)
-    @test propertynames(p, true) == (:a1, :a2, :a3, :a4, :_packed_fields_1)
+    @test propertynames(p) === propertynames(p, false) === propertynames(p, true) === (:prefix, :a1, :a2, :suffix)
+    @test (p.prefix, p.a1, p.a2, p.suffix) === (Int8(1), UInt10(2), UInt22(3), Int8(4))
+    @test fieldnames(PropertyNames)[2] === :_packed_fields_2
+
+    @packed struct Propertyless end
+    missing_field_error = @static isdefined(Core, :FieldError) ? Core.FieldError : ErrorException
+    @test_throws missing_field_error p._packed_fields_2
+    @test_throws missing_field_error p.bogus
+    @test_throws missing_field_error Propertyless().bogus
 end
 
 # Reference: four `Int2` fields directly in a `@packed` struct.
@@ -668,7 +682,7 @@ end
     @test sizeof(LonePad) == 2
     @test fieldtypes(LonePad) == (UInt8, Pack8{Tuple{Pad{8}}})
     @test reinterpret(UInt8, getfield(l, 2)) === 0x00
-    @test propertynames(l) == (:a,)
+    @test propertynames(l) === propertynames(l, true) === (:a,)
     @test l.a === 0x05 && l === LonePad(5)
     @test repr(l) == repr(LonePad) * "(0x05)"
     @test (@set l.a = 7) === LonePad(7)
@@ -691,7 +705,7 @@ end
     end
     t = TwoLonePads(0x03)
     @test sizeof(TwoLonePads) == 4
-    @test propertynames(t) == (:a, :b)
+    @test propertynames(t) === propertynames(t, true) === (:a, :b)
     t.b = 0x09
     @test t.a === 0x03 && t.b === 0x09
     @test reinterpret(UInt8, getfield(t, 2)) === reinterpret(UInt8, getfield(t, 4)) === 0x00
@@ -700,7 +714,7 @@ end
         _::Pad{8}
     end
     @test sizeof(PadOnly) == 1
-    @test propertynames(PadOnly()) == ()
+    @test propertynames(PadOnly()) === propertynames(PadOnly(), true) === ()
     @test PadOnly() === PadOnly()
 
     @packed struct WidePad

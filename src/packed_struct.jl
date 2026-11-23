@@ -79,8 +79,7 @@ end
 function define_propertynames(pfs::Vector{<:APackedFields}, atype)
     args = [:(x::$atype), Expr(:kw, :(private::Bool), false)]
     publics = Tuple(f.publicname for f in publicfields(pfs))
-    privates = (Symbol("_packed_fields_", i) for (i, pf) in enumerate(Iterators.filter(isgroup, pfs))) |> Tuple
-    body = :(private ? $((publics..., privates...)) : $publics) |> inline
+    body = inline(publics)
     JLFunction(name=:(Base.propertynames); args, body)
 end
 
@@ -94,7 +93,12 @@ function define_getproperty(pfs::Vector{<:APackedFields}, atype)
             return (:(s === $(f.publicname |> QuoteNode) && return getfield(x, s)) for f in pf.fields if !ispad(f))
         end
     end
-    body = Expr(:block, getters...) |> inline
+    missing = @static if isdefined(Core, :FieldError)
+        :(throw(Core.FieldError(typeof(x), s)))
+    else
+        :(error("type ", typeof(x), " has no field ", s))
+    end
+    body = Expr(:block, getters..., missing) |> inline
     JLFunction(name=:(Base.getproperty); args, body)
 end
 

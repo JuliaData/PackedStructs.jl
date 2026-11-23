@@ -12,5 +12,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
 EmulatedBitIntegers = {rev = "main", url = "https://github.com/PatrickHaecker/EmulatedBitIntegers.jl"}
-JET = {rev = "julia-1.13-compat", url = "https://github.com/PatrickHaecker/JET.jl"}
 PackedStructs = {path = ".."}
+
+[compat]
+JET = "0.9, 0.12.2, 0.13"

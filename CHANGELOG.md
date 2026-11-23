@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A `Bool` field that shares a group with other fields no longer throws `bitcast: argument size does not match size of target type` on construction.
 - A `Pad` field that ends up alone in its group now occupies the group's native width. Previously its bits were dropped, the outer constructor required a `Pad` argument, and two such pads failed with a duplicate field name `_`.
 - `Pad{N}` with `N > 64` now throws an `ArgumentError` at macro expansion instead of silently occupying no bits.
+- `propertynames(x, true)` no longer lists internal storage slots. `getproperty` throws a field error for internal storage slots and unknown property names.
 
 ## [0.3.2] - 2026-09-21
 
