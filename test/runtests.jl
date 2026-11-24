@@ -612,7 +612,7 @@ end
     # `@set` on the lone field doesn't touch the packed group.
     @test (@set x.c = 9) === AccImm(1, 2, 9)
 
-    # Untyped RHS goes through the outer constructor's `convert`, just like direct construction.
+    # Untyped RHS is converted by the public constructor, just like direct construction.
     @test (@set x.b = 5) === AccImm(1, 5, 3)
 
     # Mutating accessor on a mutable still produces a fresh object (Accessors semantics).
@@ -870,6 +870,21 @@ end
     end
     @test fieldtypes(BoolPad) == (Pack8{Tuple{Bool, Pad{7}}},)
     @test reinterpret(UInt8, getfield(BoolPad(true), 1)) === 0b1_0000000
+end
+
+@testset "downstream precompilation" begin
+    mktempdir() do depot
+        pushfirst!(DEPOT_PATH, depot)
+        pushfirst!(LOAD_PATH, joinpath(@__DIR__, "fixtures"))
+        try
+            id = Base.identify_package("PackedStructsPrecompile")
+            cache = Base.compilecache(id)
+            @test cache isa Tuple && isfile(first(cache))
+        finally
+            popfirst!(LOAD_PATH)
+            popfirst!(DEPOT_PATH)
+        end
+    end
 end
 
 include("Aqua.jl")

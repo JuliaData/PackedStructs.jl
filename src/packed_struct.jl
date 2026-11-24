@@ -41,12 +41,19 @@ function rewrite_new(ex::Expr, pfs, n_public_fields)
     return Expr(ex.head, (rewrite_new(a, pfs, n_public_fields) for a in ex.args)...)
 end
 
-function define_packed_struct!(s, pfs::Vector{<:APackedFields}, atype)
+function define_packed_struct!(s, pfs::Vector{<:APackedFields}, atype, source::LineNumberNode)
     s.typevars |> isempty || "Type variables in packed structs are not supported yet" |> error
 
     n_public_fields = sum(publiclength, pfs; init=0)
-    for c in s.constructors
-        c.body = rewrite_new(c.body, pfs, n_public_fields)
+    if isempty(s.constructors) && any(isgroup, pfs)
+        # An inner constructor suppresses Julia's default constructors for the storage fields.
+        args = [f.publicname for f in publicfields(pfs)]
+        body = rewrite_new_simple(args, pfs, n_public_fields) |> inline
+        push!(s.constructors, linewrap!(JLFunction(; name=s.name, args, body), source))
+    else
+        for c in s.constructors
+            c.body = rewrite_new(c.body, pfs, n_public_fields)
+        end
     end
 
     s.supertype = atype
@@ -68,13 +75,6 @@ end
 
 # Flat iterator over the user-visible `Field`s across all groups, in source order. `Pad` fields are layout-only and excluded.
 publicfields(pfs) = (f for pf in pfs for f in pf.fields if !ispad(f))
-
-# Define an untyped outer constructor that converts each argument to its field type before forwarding to the group constructor. This mirrors the default constructor Julia normally defines.
-function define_constructor(pfs::Vector{<:APackedFields}, name)
-    args = [f.publicname for f in publicfields(pfs)]
-    body = Expr(:call, name, (call_constructor(pf, (f.publicname for f in pf.fields if !ispad(f))) for pf in pfs)...) |> inline
-    return JLFunction(; name, args, body)
-end
 
 function define_propertynames(pfs::Vector{<:APackedFields}, atype)
     args = [:(x::$atype), Expr(:kw, :(private::Bool), false)]
@@ -138,7 +138,7 @@ function define_show(pfs::Vector{<:APackedFields}, atype)
     JLFunction(name=:(Base.show); args, body=inline(body))
 end
 
-# `ConstructionBase.getproperties(x)` defaults to one entry per `fieldname`, which would show the private `_packed_fields_N` storage slots. We override it to return a NamedTuple keyed by `propertynames` in constructor-argument order. `ConstructionBase.setproperties` also has to be overridden: its default `setproperties_object` refuses to run when `propertynames` differs from `fieldnames` (it can't safely guess the right constructor call). The override rebuilds the struct through the outer constructor `@packed` defines, which is the same path direct construction and `setproperty!` use. `cb` is the loaded `ConstructionBase` module (spliced as a value so the method definitions resolve without the caller importing `ConstructionBase`).
+# `ConstructionBase.getproperties(x)` defaults to one entry per `fieldname`, which would show the private `_packed_fields_N` storage slots. We override it to return a NamedTuple keyed by `propertynames` in constructor-argument order. `ConstructionBase.setproperties` also has to be overridden: its default `setproperties_object` refuses to run when `propertynames` differs from `fieldnames` (it can't safely guess the right constructor call). The override rebuilds the struct through its public constructor. `cb` is the loaded `ConstructionBase` module (spliced as a value so the method definitions resolve without the caller importing `ConstructionBase`).
 function define_constructionbase_methods(cb::Module, pfs::Vector{<:APackedFields}, atype, structname::Symbol, src::LineNumberNode)
     # `Expr(:tuple, Expr(:parameters, kw...))` is the AST for the surface form `(; a=…, b=…)`, which evaluates to a `NamedTuple` for any number of `kw` entries — including zero, where it produces `NamedTuple()` rather than the empty `Tuple` that `Expr(:tuple)` alone would yield. This keeps the override valid for zero-public-field `@packed` structs without a special case.
     nt = Expr(:tuple, Expr(:parameters, (Expr(:kw, f.publicname, :(x.$(f.publicname))) for f in publicfields(pfs))...))
@@ -200,13 +200,10 @@ function create_packed_struct!(exprs, s, pfs::Vector{<:APackedFields}, source::L
 
     field_docs = grouped_field_docs(s, pfs)
 
-    # Mirror Julia: when the user provides any inner constructor, both the default inner *and* the default convert-doing outer are suppressed; the user is responsible for whichever constructors they want.
     # Wrap the struct in `Core.@__doc__` so a docstring on the `@packed struct` form attaches to the struct itself rather than the surrounding `begin…end` block (which `@doc` can't document).
-    push!(exprs, :(Core.@__doc__ $(define_packed_struct!(s, pfs, atype) |> codegen_ast)))
+    push!(exprs, :(Core.@__doc__ $(define_packed_struct!(s, pfs, atype, source) |> codegen_ast)))
     fd = define_field_docs(s.name, field_docs)
     isnothing(fd) || push!(exprs, fd)
-    # When no grouping happened, the struct fields match the user-written ones and Julia's auto-generated outer has the same `(Any, …)` signature as ours — defining ours would overwrite it for no gain.
-    isempty(s.constructors) && any(isgroup, pfs) && push!(exprs, linewrap!(define_constructor(pfs, s.name), source) |> codegen_ast)
     push!(exprs, linewrap!(define_propertynames(pfs, atype), source) |> codegen_ast)
     push!(exprs, linewrap!(define_getproperty(pfs, atype), source) |> codegen_ast)
     push!(exprs, linewrap!(define_setproperty(pfs, atype, s.ismutable), source) |> codegen_ast)

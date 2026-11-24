@@ -159,7 +159,7 @@ Inner constructors with `new(...)` work as for plain structs — the macro rewri
 end
 ```
 
-As in plain Julia, providing any inner constructor suppresses both the default inner *and* the default convert-doing outer constructor.
+If you don't provide an inner constructor and the macro groups any fields, it generates a constructor that converts the declared fields and packs them into the storage slots. There is no separate constructor that takes the raw storage slots. If you provide an inner constructor, it replaces the default constructor, just as in plain Julia.
 
 ## Interaction with `Base`
 
@@ -246,7 +246,7 @@ using PackedStructs, Accessors   # any order, both before @packed
 @packed struct Foo …             # picks up ConstructionBase support
 ```
 
-`@packed` structs expanded before `ConstructionBase` is loaded are not retroactively patched and will fall back to the default `ConstructionBase.setproperties`, which calls the outer constructor with the internal `Pack<B>` storage slot as an argument and fails with a constructor `MethodError`. If you maintain a package that defines `@packed` structs at its own load time and want Accessors support guaranteed for downstream users, either depend on `ConstructionBase` directly or document the requirement.
+`@packed` structs expanded before `ConstructionBase` is loaded are not retroactively patched. The default `ConstructionBase.setproperties` does not support packed types whose public properties differ from their storage fields. If you maintain a package that defines `@packed` structs at its own load time and want Accessors support guaranteed for downstream users, either depend on `ConstructionBase` directly or document the requirement.
 
 ## Padding
 
