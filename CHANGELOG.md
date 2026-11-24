@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-24
 
 ### Changed
 
@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - A `Bool` field that shares a group with other fields no longer throws `bitcast: argument size does not match size of target type` on construction.
 - A `Pad` field that ends up alone in its group now occupies the group's native width. Previously its bits were dropped, the outer constructor required a `Pad` argument, and two such pads failed with a duplicate field name `_`.
 - `Pad{N}` with `N > 64` now throws an `ArgumentError` at macro expansion instead of silently occupying no bits.
+- Packed structs no longer overwrite Julia's default constructor when padding leaves the public and storage layouts with the same number of fields. Downstream packages can precompile these structs.
 - `propertynames(x, true)` no longer lists internal storage slots. `getproperty` throws a field error for internal storage slots and unknown property names.
 
 ## [0.3.2] - 2026-09-21
@@ -41,7 +42,7 @@ Initial release of `PackedStructs` as a standalone package, extracted from a mon
 - `Accessors.jl` support through a `ConstructionBase` package extension.
 - Precompilation of the common code paths via `PrecompileTools`.
 
-[Unreleased]: https://github.com/PatrickHaecker/PackedStructs.jl/compare/v0.3.2...HEAD
+[0.4.0]: https://github.com/JuliaData/PackedStructs.jl/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/PatrickHaecker/PackedStructs.jl/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/PatrickHaecker/PackedStructs.jl/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/PatrickHaecker/PackedStructs.jl/releases/tag/v0.3.0
